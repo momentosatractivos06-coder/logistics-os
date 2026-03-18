@@ -427,7 +427,7 @@
                         <div class="metric-value" id="kpi-late" style="color: #dc2626;">0</div>
                     </div>
                     <div class="metric-card" style="grid-column: 1 / -1; display: flex; flex-direction: row; align-items: center; justify-content: space-between; background: linear-gradient(135deg, var(--brand-color), #a78bfa); color: white; border: none;">
-                        <div class="metric-title" style="color: rgba(255,255,255,0.9); margin: 0; font-size: 15px;">Ingresos (Generados Hoy) <i data-lucide="banknote" style="width:22px; color: white; margin-left: 10px;"></i></div>
+                        <div class="metric-title" style="color: rgba(255,255,255,0.9); margin: 0; font-size: 15px;">Ingresos Reales (Generados Hoy) <i data-lucide="banknote" style="width:22px; color: white; margin-left: 10px;"></i></div>
                         <div class="metric-value" id="kpi-rev" style="color: white; font-size: 32px;">$0</div>
                     </div>
                 </div>
@@ -630,7 +630,7 @@
                     <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 4px;">TOTAL A COBRAR</div>
                     <div id="f-price" style="font-size: 32px; font-weight: 800; color: var(--brand-color); font-family: 'JetBrains Mono';">$5.000</div>
                 </div>
-                <button type="button" class="btn btn-brand" style="padding: 16px; font-size: 15px; font-weight: 700; width: 100%;" id="btn-save-order">
+                <button type="submit" class="btn btn-brand" style="padding: 16px; font-size: 15px; font-weight: 700; width: 100%;" id="btn-save-order">
                     <i data-lucide="save" style="width: 20px;"></i> <span id="btn-save-text">Guardar Despacho</span>
                 </button>
             </form>
@@ -651,7 +651,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBnbVH6VIyNYVwz4tPKBqdq-p0SkVt9KL8",
@@ -736,7 +736,6 @@
                 lucide.createIcons();
             });
 
-            // Tecla Enter para guardar modal
             const orderForm = document.getElementById('orderForm');
             if(orderForm) {
                 orderForm.addEventListener('keydown', function(e) {
@@ -829,12 +828,10 @@
                 document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
                 if(el) el.classList.add('active');
                 
-                // === CERRAR MODALES AL CAMBIAR DE SECCIÓN ===
                 window.ui.closeModal();
                 window.ui.closeDetailsModal();
             },
 
-            // === FUNCIÓN PARA COLAPSAR KANBAN EN MÓVIL ===
             toggleKanbanCol: function(colId, headerEl) {
                 if (window.innerWidth > 768) return; 
                 const bodyEl = document.getElementById(colId);
@@ -1015,7 +1012,6 @@
                 }
             },
             
-            // === EXPORTAR A EXCEL (EXCLUYE VIEJOS ENTREGADOS) ===
             exportToExcel: function() {
                 if (typeof XLSX === 'undefined') {
                     alert('La librería de Excel aún se está cargando. Intenta en unos segundos.');
@@ -1338,7 +1334,7 @@
                     if (toast.parentNode) toast.remove();
                     clearTimeout(timeoutId);
                     if (!e.target.closest('.toast-close')) {
-                        ui.showEventDetails(id);
+                        window.ui.showEventDetails(id);
                     }
                 });
 
@@ -1384,22 +1380,28 @@
             signOut(auth).then(() => { window.location.reload(); });
         };
 
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById('auth-screen').style.display = 'none';
                 document.getElementById('display-email').innerText = user.email;
                 
-                const savedProfile = localStorage.getItem('logisticsos_company');
-                
-                if (savedProfile) {
-                    applyCompanyProfile(JSON.parse(savedProfile));
-                    document.getElementById('app-screen').style.display = 'flex';
-                    initCharts(); 
-                    startRealtimeListener();
-                } else {
-                    document.getElementById('onboarding-screen').style.display = 'flex';
-                    lucide.createIcons();
+                try {
+                    const docRef = doc(db, "companies", user.uid);
+                    const docSnap = await getDoc(docRef);
+                    
+                    if (docSnap.exists()) {
+                        applyCompanyProfile(docSnap.data());
+                        document.getElementById('app-screen').style.display = 'flex';
+                        initCharts(); 
+                        startRealtimeListener();
+                    } else {
+                        document.getElementById('onboarding-screen').style.display = 'flex';
+                        lucide.createIcons();
+                    }
+                } catch (error) {
+                    alert("Error al cargar perfil de empresa: " + error.message);
                 }
+                
             } else {
                 document.getElementById('auth-screen').style.display = 'flex';
                 document.getElementById('app-screen').style.display = 'none';
@@ -1411,7 +1413,7 @@
             }
         });
 
-        document.getElementById('onboardingForm').addEventListener('submit', (e) => {
+        document.getElementById('onboardingForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('setup-btn');
             btn.innerHTML = '<div class="loader" style="display:block; width:16px; height:16px; border-width:2px; margin:0;"></div> Procesando...';
@@ -1424,17 +1426,22 @@
                 address: document.getElementById('setup-address').value
             };
 
-            localStorage.setItem('logisticsos_company', JSON.stringify(newProfile));
-            document.getElementById('onboarding-screen').style.display = 'none';
-            
-            applyCompanyProfile(newProfile);
-            document.getElementById('app-screen').style.display = 'flex';
-            
-            initCharts();
-            startRealtimeListener();
+            try {
+                await setDoc(doc(db, "companies", auth.currentUser.uid), newProfile);
+                document.getElementById('onboarding-screen').style.display = 'none';
+                applyCompanyProfile(newProfile);
+                document.getElementById('app-screen').style.display = 'flex';
+                initCharts();
+                startRealtimeListener();
+            } catch (error) {
+                alert("Error al guardar en la nube. Verifica tus reglas de Firebase.");
+                btn.innerHTML = '<i data-lucide="check-circle" style="width: 18px;"></i> Finalizar y Entrar';
+                btn.disabled = false;
+                lucide.createIcons();
+            }
         });
 
-        document.getElementById('companyProfileForm').addEventListener('submit', (e) => {
+        document.getElementById('companyProfileForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-save-profile');
             btn.innerHTML = '<div class="loader" style="display:block; width:16px; height:16px; border-width:2px; margin:0;"></div> Guardando...';
@@ -1447,10 +1454,14 @@
                 address: document.getElementById('edit-address').value
             };
 
-            localStorage.setItem('logisticsos_company', JSON.stringify(updatedProfile));
-            applyCompanyProfile(updatedProfile);
-            alert("Datos actualizados correctamente.");
-            
+            try {
+                await setDoc(doc(db, "companies", auth.currentUser.uid), updatedProfile, { merge: true });
+                applyCompanyProfile(updatedProfile);
+                alert("Datos actualizados correctamente en la nube.");
+            } catch(error) {
+                alert("Error al actualizar: " + error.message);
+            }
+
             btn.innerHTML = '<i data-lucide="save" style="width: 18px;"></i> Guardar Cambios';
             btn.disabled = false;
             lucide.createIcons();
@@ -1743,7 +1754,7 @@
                 let namesDisplay = o.recipient && String(o.client).trim().toLowerCase() !== String(o.recipient).trim().toLowerCase() ? `${o.client} / <br>${o.recipient}` : `${o.client}`;
 
                 card.innerHTML = `
-                    <div class="t-clickable-area" onclick="ui.showEventDetails('${o.id}')" title="Ver detalles">
+                    <div class="t-clickable-area" onclick="window.ui.showEventDetails('${o.id}')" title="Ver detalles">
                         <div class="t-top-row">
                             <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
                                 <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 800; color: var(--text-secondary); background: var(--bg-hover); padding: 2px 6px; border-radius: 4px;">#${displayId.split('-').pop()}</span>
@@ -1771,10 +1782,10 @@
                     <div class="t-footer">
                         <span class="t-price">$${(o.cost || 0).toLocaleString('es-CO')}</span>
                         <div style="display: flex; gap: 10px;">
-                            <button class="btn" style="padding: 8px 12px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-secondary);" onclick="ui.showEventDetails('${o.id}')" title="Ver recibo">
+                            <button class="btn" style="padding: 8px 12px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-secondary);" onclick="window.ui.showEventDetails('${o.id}')" title="Ver recibo">
                                 <i data-lucide="eye" style="width:18px; height:18px;"></i>
                             </button>
-                            <button class="btn" style="padding: 8px 12px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--brand-color);" onclick="ui.openEditModal('${o.id}')" title="Editar">
+                            <button class="btn" style="padding: 8px 12px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--brand-color);" onclick="window.ui.openEditModal('${o.id}')" title="Editar">
                                 <i data-lucide="edit-2" style="width:18px; height:18px;"></i>
                             </button>
                             <button class="btn" style="padding: 8px 12px; border: none; background: rgba(239, 68, 68, 0.1); color: var(--status-error);" onclick="window.deleteOrder('${o.id}')" title="Papelera">
@@ -1797,7 +1808,7 @@
                         
                         trashList.innerHTML += `
                             <div class="trash-item">
-                                <div style="flex: 1; cursor: pointer;" onclick="ui.showEventDetails('${o.id}')">
+                                <div style="flex: 1; cursor: pointer;" onclick="window.ui.showEventDetails('${o.id}')">
                                     <div style="font-weight: 800; font-size: 16px; color: var(--text-primary); margin-bottom: 6px; display: flex; align-items: center; gap: 10px;">
                                         <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-app); border: 1px solid var(--border-dim); padding: 2px 6px; border-radius: 4px;">#${displayId.split('-').pop()}</span>
                                         ${namesDisplay}
@@ -1877,7 +1888,7 @@
                     let namesDisplay = o.recipient && String(o.client).trim().toLowerCase() !== String(o.recipient).trim().toLowerCase() ? `${o.client} / <br>${o.recipient}` : `${o.client}`;
 
                     return `
-                        <div id="cal-${o.id}" class="cal-event ${isDelayedClass}" style="background: ${bg}; color: ${color}; border-color: ${border};" onclick="ui.showEventDetails('${o.id}')" title="Ver detalles">
+                        <div id="cal-${o.id}" class="cal-event ${isDelayedClass}" style="background: ${bg}; color: ${color}; border-color: ${border};" onclick="window.ui.showEventDetails('${o.id}')" title="Ver detalles">
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
                                 <div style="display: flex; align-items: center; gap: 4px; font-weight: 700; font-size: 11px; opacity: 0.85;">
                                     <i data-lucide="clock" style="width:12px; height:12px;"></i> ${format12h(o.time)}
