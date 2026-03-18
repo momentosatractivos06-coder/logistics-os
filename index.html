@@ -1382,10 +1382,16 @@
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
+                // 1. Limpieza estricta de la interfaz para evitar superposiciones en dispositivos nuevos
                 document.getElementById('auth-screen').style.display = 'none';
+                document.getElementById('onboarding-screen').style.display = 'none';
+                document.getElementById('app-screen').style.display = 'none';
                 document.getElementById('display-email').innerText = user.email;
                 
                 try {
+                    // 2. Forzar refresco del token para asegurar permisos de lectura limpios
+                    await user.getIdToken(true);
+                    
                     const docRef = doc(db, "companies", user.uid);
                     const docSnap = await getDoc(docRef);
                     
